@@ -1,0 +1,48 @@
+[package]
+name = "floresta-backup"
+version = "0.1.0"
+edition = "2021"
+description = "Bitcoin Encrypted Wallet Payload (BIP-BEWP) implementation for Floresta"
+authors = ["Davidson Souza <davidson.lucas.souza@outlook.com>"]
+keywords = ["bitcoin", "wallet", "backup", "cbor", "encryption"]
+categories = ["cryptography::cryptocurrencies"]
+license = "MIT"
+repository = "https://github.com/vinteumorg/Floresta"
+readme.workspace = true
+
+[dependencies]
+# CBOR serialization
+ciborium = "0.2"
+
+# Cryptography
+argon2 = "0.5"
+aes-gcm = "0.10"
+rand = { workspace = true }
+
+# Secure memory handling
+zeroize = { version = "1.7", features = ["derive"] }
+
+# Error handling
+thiserror = "1.0"
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_bytes = "0.11"
+
+# Bitcoin types
+bitcoin = { workspace = true }
+
+# Local dependencies
+floresta-watch-only = { workspace = true }
+floresta-common = { workspace = true }
+
+[dev-dependencies]
+hex = { workspace = true }
+rand = { workspace = true }
+
+[features]
+default = ["std"]
+std = ["floresta-common/default", "serde/std"]
+
+[lints]
+workspace = true
