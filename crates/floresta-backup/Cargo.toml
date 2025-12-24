@@ -32,12 +32,14 @@ serde_bytes = "0.11"
 # Bitcoin types
 bitcoin = { workspace = true }
 
+# Utilities
+hex = { workspace = true }
+
 # Local dependencies
 floresta-watch-only = { workspace = true }
 floresta-common = { workspace = true }
 
 [dev-dependencies]
-hex = { workspace = true }
 rand = { workspace = true }
 
 [features]

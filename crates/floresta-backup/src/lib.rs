@@ -32,7 +32,25 @@
 //! let restored = WalletPayload::import_encrypted(&backup, "my_password")?;
 //! ```
 
+pub mod cbor;
+pub mod crypto;
+pub mod envelope;
+pub mod error;
+pub mod extractor;
+pub mod importer;
 pub mod types;
+pub mod validation;
 
 // Re-export main types
 pub use types::*;
+
+// Re-export error types
+pub use error::{BackupError, Result};
+
+// Re-export main functionality
+pub use cbor::{deserialize, serialize};
+pub use crypto::Argon2Params;
+pub use envelope::EncryptedEnvelope;
+pub use extractor::{ExtractOptions, PayloadBuilder, WalletExtractor};
+pub use importer::{ImportOptions, ImportResult, WalletImporter};
+pub use validation::{validate_payload, validate_payload_strict};

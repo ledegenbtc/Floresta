@@ -332,3 +332,22 @@ Key optional features:
 - 50001: Electrum server
 - 8332: JSON-RPC
 - 8333: P2P (mainnet)
+
+## Test Data
+
+### Default Descriptor for Tests
+
+Use this WSH multisig descriptor (testnet) as default for watch-only wallet tests:
+
+```rust
+const TEST_DESCRIPTORS: &[&str] = &[
+    "wsh(sortedmulti(1,[54ff5a12/48h/1h/0h/2h]tpubDDw6pwZA3hYxcSN32q7a5ynsKmWr4BbkBNHydHPKkM4BZwUfiK7tQ26h7USm8kA1E2FvCy7f7Er7QXKF8RNptATywydARtzgrxuPDwyYv4x/<0;1>/*,[bcf969c0/48h/1h/0h/2h]tpubDEFdgZdCPgQBTNtGj4h6AehK79Jm4LH54JrYBJjAtHMLEAth7LuY87awx9ZMiCURFzFWhxToRJK6xp39aqeJWrG5nuW3eBnXeMJcvDeDxfp/<0;1>/*))#fuw35j0q"
+];
+```
+
+**Details:**
+- Type: `wsh(sortedmulti(1,...))` - 1-of-2 multisig in native SegWit
+- Network: Testnet (`tpub` prefix)
+- Derivation: BIP48 (`48h/1h/0h/2h`)
+- Multipath: `<0;1>/*` - derives both external (0) and internal/change (1)
+- Checksum: `#fuw35j0q`

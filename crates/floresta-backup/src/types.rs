@@ -115,7 +115,7 @@ pub struct MnemonicRoot {
     /// Optional BIP39 passphrase (the "25th word")
     ///
     /// CBOR key: 11
-    #[serde(rename = "11", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "11", skip_serializing_if = "Option::is_none", default)]
     pub passphrase: Option<String>,
 }
 
@@ -183,7 +183,7 @@ pub struct WalletPayload {
     /// Prevents accidentally restoring a testnet wallet on mainnet.
     ///
     /// CBOR key: 2
-    #[serde(rename = "2", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "2", skip_serializing_if = "Option::is_none", default)]
     pub genesis_hash: Option<[u8; 32]>,
 
     /// Root secret material (mnemonic/seed/entropy)
@@ -191,7 +191,7 @@ pub struct WalletPayload {
     /// Optional because watch-only wallets don't have private keys.
     ///
     /// CBOR key: 3
-    #[serde(rename = "3", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "3", skip_serializing_if = "Option::is_none", default)]
     pub root: Option<RootMaterial>,
 
     /// List of accounts with their descriptors
@@ -205,7 +205,7 @@ pub struct WalletPayload {
     /// Transaction history
     ///
     /// CBOR key: 20
-    #[serde(rename = "20", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "20", skip_serializing_if = "Option::is_none", default)]
     pub transactions: Option<Vec<Transaction>>,
 
     /// UTXO set snapshot (advisory only)
@@ -213,13 +213,13 @@ pub struct WalletPayload {
     /// The blockchain is authoritative; these are hints for faster restore.
     ///
     /// CBOR key: 30
-    #[serde(rename = "30", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "30", skip_serializing_if = "Option::is_none", default)]
     pub utxos: Option<Vec<Utxo>>,
 
     /// Wallet-level metadata (labels, timestamps, software info)
     ///
     /// CBOR key: 100
-    #[serde(rename = "100", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "100", skip_serializing_if = "Option::is_none", default)]
     pub metadata: Option<WalletMetadata>,
 }
 
@@ -263,7 +263,7 @@ pub struct Account {
     /// BIP44/84/86 account index (e.g., 0 for first account)
     ///
     /// CBOR key: 1
-    #[serde(rename = "1", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "1", skip_serializing_if = "Option::is_none", default)]
     pub index: Option<u32>,
 
     /// Output descriptors for this account
@@ -277,7 +277,7 @@ pub struct Account {
     /// Account-level metadata
     ///
     /// CBOR key: 100
-    #[serde(rename = "100", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "100", skip_serializing_if = "Option::is_none", default)]
     pub metadata: Option<AccountMetadata>,
 }
 
@@ -315,19 +315,19 @@ pub struct Descriptor {
     /// Can be used to validate the descriptor string.
     ///
     /// CBOR key: 2
-    #[serde(rename = "2", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "2", skip_serializing_if = "Option::is_none", default)]
     pub checksum: Option<String>,
 
     /// Pre-derived addresses (optional cache)
     ///
     /// CBOR key: 10
-    #[serde(rename = "10", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "10", skip_serializing_if = "Option::is_none", default)]
     pub addresses: Option<Vec<Address>>,
 
     /// Descriptor-level metadata
     ///
     /// CBOR key: 100
-    #[serde(rename = "100", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "100", skip_serializing_if = "Option::is_none", default)]
     pub metadata: Option<DescriptorMetadata>,
 }
 
@@ -355,7 +355,7 @@ pub struct Address {
     /// Address-level metadata
     ///
     /// CBOR key: 100
-    #[serde(rename = "100", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "100", skip_serializing_if = "Option::is_none", default)]
     pub metadata: Option<AddressMetadata>,
 }
 
@@ -390,13 +390,13 @@ pub struct Transaction {
     /// If present, hash(raw_tx) must equal txid.
     ///
     /// CBOR key: 2
-    #[serde(rename = "2", skip_serializing_if = "Option::is_none", with = "serde_bytes_opt")]
+    #[serde(rename = "2", skip_serializing_if = "Option::is_none", default, with = "serde_bytes_opt")]
     pub raw_tx: Option<Vec<u8>>,
 
     /// Transaction metadata (block height, fee, flags)
     ///
     /// CBOR key: 100
-    #[serde(rename = "100", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "100", skip_serializing_if = "Option::is_none", default)]
     pub metadata: Option<TransactionMetadata>,
 }
 
@@ -449,13 +449,13 @@ pub struct Utxo {
     /// Human-readable address (optional)
     ///
     /// CBOR key: 5
-    #[serde(rename = "5", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "5", skip_serializing_if = "Option::is_none", default)]
     pub address: Option<String>,
 
     /// UTXO metadata
     ///
     /// CBOR key: 100
-    #[serde(rename = "100", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "100", skip_serializing_if = "Option::is_none", default)]
     pub metadata: Option<UtxoMetadata>,
 }
 
@@ -484,37 +484,37 @@ pub struct BaseMetadata {
     /// User-friendly label (BIP329 compatible)
     ///
     /// CBOR key: 100
-    #[serde(rename = "100", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "100", skip_serializing_if = "Option::is_none", default)]
     pub label: Option<String>,
 
     /// Block height when first used
     ///
     /// CBOR key: 101
-    #[serde(rename = "101", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "101", skip_serializing_if = "Option::is_none", default)]
     pub birth_height: Option<u32>,
 
     /// Timestamp when first used (CBOR tag 1)
     ///
     /// CBOR key: 102
-    #[serde(rename = "102", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "102", skip_serializing_if = "Option::is_none", default)]
     pub birth_time: Option<u64>,
 
     /// Last update timestamp
     ///
     /// CBOR key: 103
-    #[serde(rename = "103", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "103", skip_serializing_if = "Option::is_none", default)]
     pub updated_time: Option<u64>,
 
     /// Software that created this backup
     ///
     /// CBOR key: 104
-    #[serde(rename = "104", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "104", skip_serializing_if = "Option::is_none", default)]
     pub software: Option<String>,
 
     /// Device info (e.g., hardware wallet)
     ///
     /// CBOR key: 105
-    #[serde(rename = "105", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "105", skip_serializing_if = "Option::is_none", default)]
     pub device: Option<String>,
 }
 
@@ -530,19 +530,19 @@ pub struct WalletMetadata {
     /// Master key fingerprint (4 bytes)
     ///
     /// CBOR key: 200
-    #[serde(rename = "200", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "200", skip_serializing_if = "Option::is_none", default)]
     pub fingerprint: Option<[u8; 4]>,
 
     /// Default account index
     ///
     /// CBOR key: 201
-    #[serde(rename = "201", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "201", skip_serializing_if = "Option::is_none", default)]
     pub default_account: Option<u32>,
 
     /// Wallet name
     ///
     /// CBOR key: 202
-    #[serde(rename = "202", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "202", skip_serializing_if = "Option::is_none", default)]
     pub name: Option<String>,
 
     // ========================================================================
@@ -552,13 +552,13 @@ pub struct WalletMetadata {
     /// Utreexo accumulator roots at time of backup
     ///
     /// Vendor key: 1000
-    #[serde(rename = "1000", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "1000", skip_serializing_if = "Option::is_none", default)]
     pub utreexo_roots: Option<Vec<[u8; 32]>>,
 
     /// Number of leaves in the Utreexo accumulator
     ///
     /// Vendor key: 1001
-    #[serde(rename = "1001", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "1001", skip_serializing_if = "Option::is_none", default)]
     pub utreexo_num_leaves: Option<u64>,
 }
 
@@ -574,19 +574,19 @@ pub struct AccountMetadata {
     /// Gap limit for address derivation
     ///
     /// CBOR key: 300
-    #[serde(rename = "300", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "300", skip_serializing_if = "Option::is_none", default)]
     pub gap_limit: Option<u32>,
 
     /// Next external (receive) index to derive
     ///
     /// CBOR key: 301
-    #[serde(rename = "301", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "301", skip_serializing_if = "Option::is_none", default)]
     pub next_external_index: Option<u32>,
 
     /// Next internal (change) index to derive
     ///
     /// CBOR key: 302
-    #[serde(rename = "302", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "302", skip_serializing_if = "Option::is_none", default)]
     pub next_internal_index: Option<u32>,
 }
 
@@ -602,25 +602,25 @@ pub struct DescriptorMetadata {
     /// Role: 0 = receive (external), 1 = change (internal)
     ///
     /// CBOR key: 400
-    #[serde(rename = "400", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "400", skip_serializing_if = "Option::is_none", default)]
     pub role: Option<RoleType>,
 
     /// Next index to derive for this descriptor
     ///
     /// CBOR key: 401
-    #[serde(rename = "401", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "401", skip_serializing_if = "Option::is_none", default)]
     pub next_index: Option<u32>,
 
     /// Gap limit for this descriptor
     ///
     /// CBOR key: 402
-    #[serde(rename = "402", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "402", skip_serializing_if = "Option::is_none", default)]
     pub gap_limit: Option<u32>,
 
     /// Whether this is a watch-only descriptor (no private keys)
     ///
     /// CBOR key: 403
-    #[serde(rename = "403", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "403", skip_serializing_if = "Option::is_none", default)]
     pub watch_only: Option<bool>,
 }
 
@@ -639,31 +639,31 @@ pub struct TransactionMetadata {
     /// CRITICAL for Floresta: enables restore without rescan!
     ///
     /// CBOR key: 500
-    #[serde(rename = "500", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "500", skip_serializing_if = "Option::is_none", default)]
     pub block_height: Option<u32>,
 
     /// Transaction fee in satoshis
     ///
     /// CBOR key: 501
-    #[serde(rename = "501", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "501", skip_serializing_if = "Option::is_none", default)]
     pub fee: Option<u64>,
 
     /// Whether this transaction signals RBF
     ///
     /// CBOR key: 502
-    #[serde(rename = "502", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "502", skip_serializing_if = "Option::is_none", default)]
     pub is_rbf: Option<bool>,
 
     /// Whether this is a CPFP parent transaction
     ///
     /// CBOR key: 503
-    #[serde(rename = "503", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "503", skip_serializing_if = "Option::is_none", default)]
     pub is_cpfp_parent: Option<bool>,
 
     /// Whether this is a CPFP child transaction
     ///
     /// CBOR key: 504
-    #[serde(rename = "504", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "504", skip_serializing_if = "Option::is_none", default)]
     pub is_cpfp_child: Option<bool>,
 
     // ========================================================================
@@ -673,19 +673,19 @@ pub struct TransactionMetadata {
     /// Block hash where transaction was confirmed
     ///
     /// Vendor key: 1000
-    #[serde(rename = "1000", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "1000", skip_serializing_if = "Option::is_none", default)]
     pub block_hash: Option<[u8; 32]>,
 
     /// Merkle proof for SPV verification
     ///
     /// Vendor key: 1001
-    #[serde(rename = "1001", skip_serializing_if = "Option::is_none", with = "serde_bytes_opt")]
+    #[serde(rename = "1001", skip_serializing_if = "Option::is_none", default, with = "serde_bytes_opt")]
     pub merkle_proof: Option<Vec<u8>>,
 
     /// Transaction position in the block
     ///
     /// Vendor key: 1002
-    #[serde(rename = "1002", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "1002", skip_serializing_if = "Option::is_none", default)]
     pub position_in_block: Option<u32>,
 }
 
@@ -701,31 +701,31 @@ pub struct UtxoMetadata {
     /// Whether this UTXO is spendable (confirmed)
     ///
     /// CBOR key: 600
-    #[serde(rename = "600", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "600", skip_serializing_if = "Option::is_none", default)]
     pub spendable: Option<bool>,
 
     /// Whether this UTXO is frozen (user-locked)
     ///
     /// CBOR key: 601
-    #[serde(rename = "601", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "601", skip_serializing_if = "Option::is_none", default)]
     pub frozen: Option<bool>,
 
     /// Whether this UTXO is from a coinbase transaction
     ///
     /// CBOR key: 602
-    #[serde(rename = "602", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "602", skip_serializing_if = "Option::is_none", default)]
     pub is_coinbase: Option<bool>,
 
     /// Derivation index that generated this address
     ///
     /// CBOR key: 603
-    #[serde(rename = "603", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "603", skip_serializing_if = "Option::is_none", default)]
     pub derivation_index: Option<u32>,
 
     /// Role type (external/internal)
     ///
     /// CBOR key: 604
-    #[serde(rename = "604", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "604", skip_serializing_if = "Option::is_none", default)]
     pub role: Option<RoleType>,
 }
 
@@ -741,25 +741,25 @@ pub struct AddressMetadata {
     /// Derivation index for this address
     ///
     /// CBOR key: 700
-    #[serde(rename = "700", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "700", skip_serializing_if = "Option::is_none", default)]
     pub derivation_index: Option<u32>,
 
     /// Role type (external/internal)
     ///
     /// CBOR key: 701
-    #[serde(rename = "701", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "701", skip_serializing_if = "Option::is_none", default)]
     pub role: Option<RoleType>,
 
     /// Whether this address has been used
     ///
     /// CBOR key: 702
-    #[serde(rename = "702", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "702", skip_serializing_if = "Option::is_none", default)]
     pub is_used: Option<bool>,
 
     /// Number of times this address was used
     ///
     /// CBOR key: 703
-    #[serde(rename = "703", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "703", skip_serializing_if = "Option::is_none", default)]
     pub use_count: Option<u32>,
 }
 
