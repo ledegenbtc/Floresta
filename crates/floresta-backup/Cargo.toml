@@ -41,6 +41,8 @@ floresta-common = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }
+# Enable memory-database for testing wallet integration
+floresta-watch-only = { workspace = true, features = ["memory-database"] }
 
 [features]
 default = ["std"]

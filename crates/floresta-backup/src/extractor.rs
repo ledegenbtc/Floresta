@@ -15,14 +15,19 @@
 //! use floresta_backup::extractor::WalletExtractor;
 //! use floresta_watch_only::AddressCache;
 //!
-//! let extractor = WalletExtractor::new(&address_cache);
-//! let payload = extractor.extract()?;
+//! let extractor = WalletExtractor::new(NetworkType::Mainnet);
+//! let payload = extractor.extract_from_wallet(&address_cache)?;
 //! ```
+
+use bitcoin::consensus::serialize as consensus_serialize;
+use bitcoin::hashes::Hash as _;
+use floresta_common::get_spk_hash;
+use floresta_watch_only::AddressCacheDatabase;
 
 use crate::error::{BackupError, Result};
 use crate::{
-    Account, Descriptor, DescriptorMetadata, NetworkType, Transaction, TransactionMetadata,
-    Utxo, UtxoMetadata, WalletMetadata, WalletPayload,
+    Account, AccountMetadata, BaseMetadata, Descriptor, DescriptorMetadata, NetworkType,
+    Transaction, TransactionMetadata, Utxo, UtxoMetadata, WalletMetadata, WalletPayload,
 };
 
 /// Options for wallet extraction.
@@ -71,8 +76,8 @@ impl ExtractOptions {
 
 /// Extractor for wallet data.
 ///
-/// This struct will be expanded to integrate with floresta-watch-only
-/// in Phase 4 of the implementation.
+/// This struct extracts data from the Floresta wallet (AddressCache)
+/// for backup purposes, including descriptors, transactions, and UTXOs.
 pub struct WalletExtractor {
     network: NetworkType,
     options: ExtractOptions,
@@ -93,14 +98,100 @@ impl WalletExtractor {
         self
     }
 
-    /// Extract wallet data into a WalletPayload.
+    /// Extract wallet data from an AddressCache into a WalletPayload.
     ///
-    /// This is a placeholder that will be implemented in Phase 4
-    /// when integrating with the actual Floresta wallet.
-    pub fn extract_from_descriptors(
+    /// This method extracts descriptors, transactions, and UTXOs from the
+    /// Floresta wallet, including confirmation heights for rescan-free restore.
+    ///
+    /// # Arguments
+    ///
+    /// * `wallet` - Reference to the AddressCache to extract data from
+    ///
+    /// # Returns
+    ///
+    /// A `WalletPayload` containing all extracted wallet data.
+    pub fn extract_from_wallet<D>(
         &self,
-        descriptors: &[String],
-    ) -> Result<WalletPayload> {
+        wallet: &floresta_watch_only::AddressCache<D>,
+    ) -> Result<WalletPayload>
+    where
+        D: AddressCacheDatabase,
+    {
+        let mut payload = WalletPayload::new(self.network);
+
+        // Extract descriptors
+        let descriptors = wallet
+            .get_descriptors()
+            .map_err(|e| BackupError::WalletExtraction(format!("Failed to get descriptors: {e}")))?;
+
+        if descriptors.is_empty() {
+            return Err(BackupError::WalletExtraction(
+                "No descriptors in wallet".to_string(),
+            ));
+        }
+
+        // Get wallet stats for metadata
+        let stats = wallet
+            .get_stats()
+            .map_err(|e| BackupError::WalletExtraction(format!("Failed to get stats: {e}")))?;
+
+        // Create account from descriptors
+        let account = Account {
+            index: Some(0),
+            descriptors: descriptors
+                .iter()
+                .map(|d| Descriptor {
+                    descriptor: d.clone(),
+                    checksum: extract_checksum(d),
+                    addresses: None,
+                    metadata: Some(DescriptorMetadata {
+                        watch_only: Some(true),
+                        ..Default::default()
+                    }),
+                })
+                .collect(),
+            metadata: Some(AccountMetadata {
+                next_external_index: Some(stats.derivation_index),
+                ..Default::default()
+            }),
+        };
+
+        payload.accounts.push(account);
+
+        // Extract transactions if requested
+        if self.options.include_transactions {
+            let transactions = self.extract_transactions_from_wallet(wallet)?;
+            if !transactions.is_empty() {
+                payload.transactions = Some(transactions);
+            }
+        }
+
+        // Extract UTXOs if requested
+        if self.options.include_utxos {
+            let utxos = self.extract_utxos_from_wallet(wallet)?;
+            if !utxos.is_empty() {
+                payload.utxos = Some(utxos);
+            }
+        }
+
+        // Set wallet metadata
+        payload.metadata = Some(WalletMetadata {
+            base: BaseMetadata {
+                software: Some("Floresta".to_string()),
+                birth_height: Some(stats.cache_height),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+
+        Ok(payload)
+    }
+
+    /// Extract wallet data into a WalletPayload from a list of descriptors.
+    ///
+    /// This is a simpler method for when you only have descriptors without
+    /// a full wallet instance.
+    pub fn extract_from_descriptors(&self, descriptors: &[String]) -> Result<WalletPayload> {
         if descriptors.is_empty() {
             return Err(BackupError::WalletExtraction(
                 "No descriptors provided".to_string(),
@@ -126,7 +217,7 @@ impl WalletExtractor {
 
         payload.accounts.push(account);
         payload.metadata = Some(WalletMetadata {
-            base: crate::BaseMetadata {
+            base: BaseMetadata {
                 software: Some("Floresta".to_string()),
                 ..Default::default()
             },
@@ -136,22 +227,119 @@ impl WalletExtractor {
         Ok(payload)
     }
 
-    /// Extract transactions from wallet data.
+    /// Extract transactions from the wallet.
     ///
-    /// Placeholder for Phase 4 integration.
-    #[allow(dead_code)]
-    fn extract_transactions(&self) -> Result<Vec<Transaction>> {
-        // TODO: Implement in Phase 4
-        Ok(Vec::new())
+    /// Includes block heights and merkle proofs for rescan-free restoration.
+    fn extract_transactions_from_wallet<D>(
+        &self,
+        wallet: &floresta_watch_only::AddressCache<D>,
+    ) -> Result<Vec<Transaction>>
+    where
+        D: AddressCacheDatabase,
+    {
+        let mut transactions = Vec::new();
+        let addresses = wallet.get_cached_addresses();
+
+        // Collect unique transactions from all addresses
+        let mut seen_txids = std::collections::HashSet::new();
+
+        for script in addresses {
+            let script_hash = get_spk_hash(&script);
+
+            if let Some(history) = wallet.get_address_history(&script_hash) {
+                for cached_tx in history {
+                    // Skip if we've already processed this transaction
+                    if !seen_txids.insert(cached_tx.hash) {
+                        continue;
+                    }
+
+                    // Apply max_transactions limit
+                    if let Some(max) = self.options.max_transactions {
+                        if transactions.len() >= max {
+                            break;
+                        }
+                    }
+
+                    // Convert txid to bytes (little-endian as stored internally)
+                    let txid_bytes: [u8; 32] = *cached_tx.hash.as_byte_array();
+
+                    // Get raw transaction bytes if requested
+                    let raw_tx = if self.options.include_raw_transactions {
+                        Some(consensus_serialize(&cached_tx.tx))
+                    } else {
+                        None
+                    };
+
+                    // Serialize merkle proof if present
+                    let merkle_proof = cached_tx
+                        .merkle_block
+                        .as_ref()
+                        .map(|mb| consensus_serialize(mb));
+
+                    // Create transaction with metadata
+                    let tx = Transaction {
+                        txid: txid_bytes,
+                        raw_tx,
+                        metadata: Some(TransactionMetadata {
+                            block_height: if cached_tx.height > 0 {
+                                Some(cached_tx.height)
+                            } else {
+                                None
+                            },
+                            position_in_block: if cached_tx.height > 0 {
+                                Some(cached_tx.position)
+                            } else {
+                                None
+                            },
+                            merkle_proof,
+                            ..Default::default()
+                        }),
+                    };
+
+                    transactions.push(tx);
+                }
+            }
+        }
+
+        Ok(transactions)
     }
 
-    /// Extract UTXOs from wallet data.
-    ///
-    /// Placeholder for Phase 4 integration.
-    #[allow(dead_code)]
-    fn extract_utxos(&self) -> Result<Vec<Utxo>> {
-        // TODO: Implement in Phase 4
-        Ok(Vec::new())
+    /// Extract UTXOs from the wallet.
+    fn extract_utxos_from_wallet<D>(
+        &self,
+        wallet: &floresta_watch_only::AddressCache<D>,
+    ) -> Result<Vec<Utxo>>
+    where
+        D: AddressCacheDatabase,
+    {
+        let mut utxos = Vec::new();
+        let addresses = wallet.get_cached_addresses();
+
+        for script in addresses {
+            let script_hash = get_spk_hash(&script);
+
+            if let Some(address_utxos) = wallet.get_address_utxos(&script_hash) {
+                for (tx_out, outpoint) in address_utxos {
+                    let txid_bytes: [u8; 32] = *outpoint.txid.as_byte_array();
+
+                    let utxo = Utxo {
+                        txid: txid_bytes,
+                        vout: outpoint.vout,
+                        amount: tx_out.value.to_sat(),
+                        script_pubkey: tx_out.script_pubkey.to_bytes(),
+                        address: None, // Could derive address from script if needed
+                        metadata: Some(UtxoMetadata {
+                            spendable: Some(true),
+                            ..Default::default()
+                        }),
+                    };
+
+                    utxos.push(utxo);
+                }
+            }
+        }
+
+        Ok(utxos)
     }
 }
 

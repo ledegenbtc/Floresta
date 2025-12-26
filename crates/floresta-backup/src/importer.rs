@@ -28,8 +28,15 @@
 //! let payload = envelope.decrypt("password")?;
 //!
 //! let importer = WalletImporter::new(payload);
-//! importer.import_to_wallet(&mut address_cache)?;
+//! let result = importer.import_to_wallet(&wallet)?;
 //! ```
+
+use bitcoin::consensus::deserialize as consensus_deserialize;
+use bitcoin::hashes::Hash;
+use bitcoin::Txid;
+use floresta_common::get_spk_hash;
+use floresta_watch_only::merkle::MerkleProof;
+use floresta_watch_only::AddressCacheDatabase;
 
 use crate::error::{BackupError, Result};
 use crate::validation::validate_payload;
@@ -181,8 +188,8 @@ impl WalletImporter {
 
     /// Perform a mock import and return statistics.
     ///
-    /// This is a placeholder that will be replaced with actual wallet
-    /// integration in Phase 4.
+    /// This allows you to preview what will be imported without
+    /// actually modifying the wallet.
     pub fn dry_run(&self) -> Result<ImportResult> {
         self.validate()?;
 
@@ -218,6 +225,223 @@ impl WalletImporter {
         }
 
         Ok(result)
+    }
+
+    /// Import the backup data into a wallet.
+    ///
+    /// This method restores descriptors and transactions to the wallet,
+    /// enabling rescan-free restoration by using stored block heights.
+    ///
+    /// # Arguments
+    ///
+    /// * `wallet` - Reference to the AddressCache to import data into
+    ///
+    /// # Returns
+    ///
+    /// An `ImportResult` containing statistics about what was imported.
+    pub fn import_to_wallet<D>(
+        &self,
+        wallet: &floresta_watch_only::AddressCache<D>,
+    ) -> Result<ImportResult>
+    where
+        D: AddressCacheDatabase,
+    {
+        // Validate payload first
+        self.validate()?;
+
+        let mut result = ImportResult {
+            descriptors_imported: 0,
+            transactions_imported: 0,
+            utxos_imported: 0,
+            warnings: Vec::new(),
+        };
+
+        // Import descriptors
+        for account in &self.payload.accounts {
+            for descriptor in &account.descriptors {
+                // Check if descriptor is already cached
+                match wallet.is_cached(&descriptor.descriptor) {
+                    Ok(true) => {
+                        result.warnings.push(format!(
+                            "Descriptor already cached: {}...",
+                            &descriptor.descriptor[..descriptor.descriptor.len().min(40)]
+                        ));
+                    }
+                    Ok(false) => {
+                        wallet
+                            .push_descriptor(&descriptor.descriptor)
+                            .map_err(|e| {
+                                BackupError::WalletImport(format!(
+                                    "Failed to push descriptor: {e}"
+                                ))
+                            })?;
+                        result.descriptors_imported += 1;
+                    }
+                    Err(e) => {
+                        result.warnings.push(format!(
+                            "Failed to check if descriptor is cached: {e}"
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Derive addresses after importing descriptors
+        if result.descriptors_imported > 0 {
+            wallet.derive_addresses().map_err(|e| {
+                BackupError::WalletImport(format!("Failed to derive addresses: {e}"))
+            })?;
+        }
+
+        // Import transactions with their confirmation data
+        if let Some(txs) = &self.payload.transactions {
+            for tx in txs {
+                match self.import_transaction(wallet, tx) {
+                    Ok(()) => {
+                        result.transactions_imported += 1;
+                    }
+                    Err(e) => {
+                        if self.options.allow_incomplete_transactions {
+                            result.warnings.push(format!(
+                                "Failed to import transaction {}: {}",
+                                hex::encode(&tx.txid[..8]),
+                                e
+                            ));
+                        } else {
+                            return Err(e);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update cache height based on metadata
+        if let Some(metadata) = &self.payload.metadata {
+            if let Some(birth_height) = metadata.base.birth_height {
+                wallet.bump_height(birth_height);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Import a single transaction into the wallet.
+    fn import_transaction<D>(
+        &self,
+        wallet: &floresta_watch_only::AddressCache<D>,
+        tx: &crate::Transaction,
+    ) -> Result<()>
+    where
+        D: AddressCacheDatabase,
+    {
+        // We need the raw transaction to import
+        let raw_tx = tx.raw_tx.as_ref().ok_or_else(|| {
+            BackupError::WalletImport("Transaction missing raw_tx data".to_string())
+        })?;
+
+        // Deserialize the transaction
+        let bitcoin_tx: bitcoin::Transaction = consensus_deserialize(raw_tx)
+            .map_err(|e| BackupError::WalletImport(format!("Failed to deserialize tx: {e}")))?;
+
+        // Get block height (0 for unconfirmed)
+        let height = tx
+            .metadata
+            .as_ref()
+            .and_then(|m| m.block_height)
+            .unwrap_or(0);
+
+        // Get position in block (0 if not specified)
+        let position = tx
+            .metadata
+            .as_ref()
+            .and_then(|m| m.position_in_block)
+            .unwrap_or(0);
+
+        // Deserialize merkle proof if present
+        let merkle_proof = if let Some(proof_bytes) = tx
+            .metadata
+            .as_ref()
+            .and_then(|m| m.merkle_proof.as_ref())
+        {
+            consensus_deserialize::<MerkleProof>(proof_bytes).unwrap_or_default()
+        } else {
+            MerkleProof::default()
+        };
+
+        // Find outputs that belong to us (we need to cache for each output)
+        for (vout, output) in bitcoin_tx.output.iter().enumerate() {
+            let script_hash = get_spk_hash(&output.script_pubkey);
+
+            // Check if this address is being tracked
+            if wallet.is_address_cached(&script_hash) {
+                wallet.cache_transaction(
+                    &bitcoin_tx,
+                    height,
+                    output.value.to_sat(),
+                    merkle_proof.clone(),
+                    position,
+                    vout,
+                    false, // is_spend = false for received outputs
+                    script_hash,
+                );
+            }
+        }
+
+        // Also check inputs for spent outputs
+        for (vin, input) in bitcoin_tx.input.iter().enumerate() {
+            // Get the previous transaction output if available in the wallet
+            if let Some(prev_txout) = wallet.get_utxo(&input.previous_output) {
+                let script_hash = get_spk_hash(&prev_txout.script_pubkey);
+
+                if wallet.is_address_cached(&script_hash) {
+                    wallet.cache_transaction(
+                        &bitcoin_tx,
+                        height,
+                        prev_txout.value.to_sat(),
+                        merkle_proof.clone(),
+                        position,
+                        vin,
+                        true, // is_spend = true for spent inputs
+                        script_hash,
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get derivation index from account metadata if present.
+    pub fn get_derivation_index(&self) -> Option<u32> {
+        self.payload
+            .accounts
+            .first()
+            .and_then(|acc| acc.metadata.as_ref())
+            .and_then(|meta| meta.next_external_index)
+    }
+
+    /// Get all raw transactions from the payload.
+    ///
+    /// Returns tuples of (txid_bytes, bitcoin::Transaction) for transactions
+    /// that include raw bytes.
+    pub fn get_bitcoin_transactions(&self) -> Result<Vec<(Txid, bitcoin::Transaction)>> {
+        let mut transactions = Vec::new();
+
+        if let Some(txs) = &self.payload.transactions {
+            for tx in txs {
+                if let Some(raw_tx) = &tx.raw_tx {
+                    let bitcoin_tx: bitcoin::Transaction = consensus_deserialize(raw_tx)
+                        .map_err(|e| {
+                            BackupError::WalletImport(format!("Failed to deserialize tx: {e}"))
+                        })?;
+
+                    let txid = Txid::from_byte_array(tx.txid);
+                    transactions.push((txid, bitcoin_tx));
+                }
+            }
+        }
+
+        Ok(transactions)
     }
 }
 
