@@ -88,6 +88,60 @@ fn test_extract_with_transactions() {
 
     let payload = extractor.extract_from_wallet(&wallet).unwrap();
 
+    // ========== PRINT EXTRACTED DATA ==========
+    println!("\n========== WALLET BACKUP DATA ==========\n");
+
+    // Descriptors
+    println!("DESCRIPTORS:");
+    for (i, acc) in payload.accounts.iter().enumerate() {
+        for desc in &acc.descriptors {
+            println!("  [{}] {}", i, &desc.descriptor[..60.min(desc.descriptor.len())]);
+        }
+    }
+
+    // Transactions
+    println!("\nTRANSACTIONS:");
+    if let Some(txs) = &payload.transactions {
+        for tx in txs {
+            let txid_hex = hex::encode(&tx.txid);
+            let height = tx.metadata.as_ref().and_then(|m| m.block_height).unwrap_or(0);
+            let has_raw = tx.raw_tx.is_some();
+            println!("  TXID: {}...{}", &txid_hex[..8], &txid_hex[56..]);
+            println!("    Block Height: {}", height);
+            println!("    Has Raw TX: {}", has_raw);
+            if let Some(raw) = &tx.raw_tx {
+                println!("    Raw TX Size: {} bytes", raw.len());
+            }
+        }
+    } else {
+        println!("  (none)");
+    }
+
+    // UTXOs
+    println!("\nUTXOS:");
+    if let Some(utxos) = &payload.utxos {
+        let mut total_sats: u64 = 0;
+        for utxo in utxos {
+            let txid_hex = hex::encode(&utxo.txid);
+            println!("  {}...{}:{}", &txid_hex[..8], &txid_hex[56..], utxo.vout);
+            println!("    Amount: {} sats ({:.8} BTC)", utxo.amount, utxo.amount as f64 / 100_000_000.0);
+            println!("    ScriptPubKey: {}", hex::encode(&utxo.script_pubkey));
+            total_sats += utxo.amount;
+        }
+        println!("\n  TOTAL BALANCE: {} sats ({:.8} BTC)", total_sats, total_sats as f64 / 100_000_000.0);
+    } else {
+        println!("  (none)");
+    }
+
+    // Metadata
+    println!("\nMETADATA:");
+    if let Some(meta) = &payload.metadata {
+        println!("  Software: {:?}", meta.base.software);
+        println!("  Birth Height: {:?}", meta.base.birth_height);
+    }
+
+    println!("\n=========================================\n");
+
     // Verify transactions were extracted
     assert!(payload.transactions.is_some());
     let txs = payload.transactions.as_ref().unwrap();
