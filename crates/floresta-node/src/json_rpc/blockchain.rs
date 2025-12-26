@@ -651,4 +651,10 @@ impl<Blockchain: RpcChain> RpcImpl<Blockchain> {
             .map_err(|e| JsonRpcError::Wallet(e.to_string()))?;
         Ok(descriptors)
     }
+
+    pub(super) fn remove_descriptor(&self, descriptor: String) -> Result<bool, JsonRpcError> {
+        self.wallet
+            .remove_descriptor(&descriptor)
+            .map_err(|e| JsonRpcError::Wallet(e.to_string()))
+    }
 }

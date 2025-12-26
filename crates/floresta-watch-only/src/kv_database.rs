@@ -111,6 +111,23 @@ impl AddressCacheDatabase for KvDatabase {
         Ok(Vec::new())
     }
 
+    fn desc_remove(&self, descriptor: &str) -> Result<bool> {
+        let mut descs = self.descs_get()?;
+        let original_len = descs.len();
+        descs.retain(|d| d != descriptor);
+
+        if descs.len() == original_len {
+            // Descriptor not found
+            return Ok(false);
+        }
+
+        self.1
+            .set(&String::from("desc"), &serde_json::to_vec(&descs).unwrap())?;
+        self.1.flush()?;
+
+        Ok(true)
+    }
+
     fn get_transaction(&self, txid: &bitcoin::Txid) -> Result<super::CachedTransaction> {
         let store = self.0.bucket::<&[u8], Vec<u8>>(Some("transactions"))?;
         let res = store.get(&txid.as_byte_array().to_vec().as_slice())?;
@@ -249,5 +266,37 @@ mod test {
 
         db.update(&cache_address);
         assert_eq!(db.load().unwrap()[0].script_hash, cache_address.script_hash);
+    }
+
+    #[test]
+    fn test_desc_remove() {
+        let db = get_test_db();
+        let desc1 = "wpkh([00000000/84h/1h/0h]tpubDCvLwbJPseNux9EtPbrbA2tgDayzptK4HNkky14Cw6msjHuqyZCE18UDfuP2s7iXCbRLFMKnPKeLoK3hnffEzZPQc6jXRpAi6QEHo8vAqZy/0/*)#fyfc5f6k";
+        let desc2 = "wpkh([00000000/84h/1h/0h]tpubDCvLwbJPseNux9EtPbrbA2tgDayzptK4HNkky14Cw6msjHuqyZCE18UDfuP2s7iXCbRLFMKnPKeLoK3hnffEzZPQc6jXRpAi6QEHo8vAqZy/1/*)#qv8xvmxa";
+
+        // Initially empty
+        assert!(db.descs_get().unwrap().is_empty());
+
+        // Add two descriptors
+        db.desc_save(desc1).unwrap();
+        db.desc_save(desc2).unwrap();
+        assert_eq!(db.descs_get().unwrap().len(), 2);
+
+        // Remove first descriptor - should return true
+        assert!(db.desc_remove(desc1).unwrap());
+        let descs = db.descs_get().unwrap();
+        assert_eq!(descs.len(), 1);
+        assert_eq!(descs[0], desc2);
+
+        // Try to remove non-existent descriptor - should return false
+        assert!(!db.desc_remove(desc1).unwrap());
+        assert_eq!(db.descs_get().unwrap().len(), 1);
+
+        // Remove second descriptor
+        assert!(db.desc_remove(desc2).unwrap());
+        assert!(db.descs_get().unwrap().is_empty());
+
+        // Try to remove from empty list - should return false
+        assert!(!db.desc_remove(desc1).unwrap());
     }
 }

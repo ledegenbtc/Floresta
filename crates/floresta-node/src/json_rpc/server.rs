@@ -135,6 +135,11 @@ impl<Blockchain: RpcChain> RpcImpl<Blockchain> {
             return Err(JsonRpcError::InvalidDescriptor);
         };
 
+        // Persist the descriptor to the database
+        self.wallet
+            .push_descriptor(&descriptor)
+            .map_err(|e| JsonRpcError::Wallet(e.to_string()))?;
+
         // It's ok to unwrap because we know there is at least one element in the vector
         let addresses = parsed.pop().unwrap();
         let addresses = (0..100)
@@ -453,6 +458,13 @@ async fn handle_json_rpc_request(
         "listdescriptors" => state
             .list_descriptors()
             .map(|v| serde_json::to_value(v).unwrap()),
+
+        "removedescriptor" => {
+            let descriptor = get_string(&params, 0, "descriptor")?;
+            state
+                .remove_descriptor(descriptor)
+                .map(|v| serde_json::to_value(v).unwrap())
+        }
 
         _ => {
             let error = JsonRpcError::MethodNotFound;

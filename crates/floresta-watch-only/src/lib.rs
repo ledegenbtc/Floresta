@@ -155,6 +155,8 @@ pub trait AddressCacheDatabase {
     fn desc_save(&self, descriptor: &str) -> Result<(), Self::Error>;
     /// Get associated descriptors
     fn descs_get(&self) -> Result<Vec<String>, Self::Error>;
+    /// Remove a descriptor from the cache
+    fn desc_remove(&self, descriptor: &str) -> Result<bool, Self::Error>;
     /// Get a transaction from the database
     fn get_transaction(&self, txid: &Txid) -> Result<CachedTransaction, Self::Error>;
     /// Saves a transaction to the database
@@ -638,6 +640,14 @@ impl<D: AddressCacheDatabase> AddressCache<D> {
         Ok(inner.database.desc_save(descriptor)?)
     }
 
+    /// Remove a descriptor from the wallet.
+    ///
+    /// Returns true if the descriptor was found and removed, false otherwise.
+    pub fn remove_descriptor(&self, descriptor: &str) -> Result<bool, WatchOnlyError<D::Error>> {
+        let inner = self.inner.write().expect("poisoned lock");
+        Ok(inner.database.desc_remove(descriptor)?)
+    }
+
     pub fn get_position(&self, txid: &Txid) -> Option<u32> {
         let inner = self.inner.read().expect("poisoned lock");
         Some(inner.get_transaction(txid)?.position)
@@ -997,5 +1007,37 @@ mod test {
 
         assert_eq!(address.transactions.len(), 2);
         assert_eq!(address.utxos.len(), 1);
+    }
+
+    #[test]
+    fn test_remove_descriptor() {
+        let cache = get_test_cache();
+        let desc1 = "wsh(sortedmulti(1,[54ff5a12/48h/1h/0h/2h]tpubDDw6pwZA3hYxcSN32q7a5ynsKmWr4BbkBNHydHPKkM4BZwUfiK7tQ26h7USm8kA1E2FvCy7f7Er7QXKF8RNptATywydARtzgrxuPDwyYv4x/<0;1>/*,[bcf969c0/48h/1h/0h/2h]tpubDEFdgZdCPgQBTNtGj4h6AehK79Jm4LH54JrYBJjAtHMLEAth7LuY87awx9ZMiCURFzFWhxToRJK6xp39aqeJWrG5nuW3eBnXeMJcvDeDxfp/<0;1>/*))#fuw35j0q";
+        let desc2 = "wpkh([00000000/84h/1h/0h]tpubDCvLwbJPseNux9EtPbrbA2tgDayzptK4HNkky14Cw6msjHuqyZCE18UDfuP2s7iXCbRLFMKnPKeLoK3hnffEzZPQc6jXRpAi6QEHo8vAqZy/0/*)#fyfc5f6k";
+
+        // Initially no descriptors
+        assert!(!cache.is_cached(&desc1.to_string()).unwrap());
+        assert!(!cache.is_cached(&desc2.to_string()).unwrap());
+
+        // Add two descriptors
+        cache.push_descriptor(desc1).unwrap();
+        cache.push_descriptor(desc2).unwrap();
+        assert!(cache.is_cached(&desc1.to_string()).unwrap());
+        assert!(cache.is_cached(&desc2.to_string()).unwrap());
+
+        // Remove first descriptor - should return true
+        assert!(cache.remove_descriptor(desc1).unwrap());
+        assert!(!cache.is_cached(&desc1.to_string()).unwrap());
+        assert!(cache.is_cached(&desc2.to_string()).unwrap());
+
+        // Try to remove already-removed descriptor - should return false
+        assert!(!cache.remove_descriptor(desc1).unwrap());
+
+        // Remove second descriptor
+        assert!(cache.remove_descriptor(desc2).unwrap());
+        assert!(!cache.is_cached(&desc2.to_string()).unwrap());
+
+        // Try to remove from empty - should return false
+        assert!(!cache.remove_descriptor(desc1).unwrap());
     }
 }

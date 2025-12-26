@@ -61,6 +61,10 @@ pub trait FlorestaRPC {
     /// as old as the oldest transaction this descriptor could have been used in.
     fn load_descriptor(&self, descriptor: String) -> Result<bool>;
 
+    /// Removes a descriptor from the watch-only wallet.
+    /// Returns true if the descriptor was found and removed, false otherwise.
+    fn remove_descriptor(&self, descriptor: String) -> Result<bool>;
+
     #[doc = include_str!("../../../doc/rpc/rescanblockchain.md")]
     fn rescanblockchain(
         &self,
@@ -309,6 +313,10 @@ impl<T: JsonRPCClient> FlorestaRPC for T {
 
     fn load_descriptor(&self, descriptor: String) -> Result<bool> {
         self.call("loaddescriptor", &[Value::String(descriptor)])
+    }
+
+    fn remove_descriptor(&self, descriptor: String) -> Result<bool> {
+        self.call("removedescriptor", &[Value::String(descriptor)])
     }
 
     fn get_block_filter(&self, height: u32) -> Result<String> {

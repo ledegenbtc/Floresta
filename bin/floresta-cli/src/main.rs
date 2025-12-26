@@ -90,6 +90,9 @@ fn do_request(cmd: &Cli, client: Client) -> anyhow::Result<String> {
         Methods::LoadDescriptor { desc } => {
             serde_json::to_string_pretty(&client.load_descriptor(desc)?)?
         }
+        Methods::RemoveDescriptor { desc } => {
+            serde_json::to_string_pretty(&client.remove_descriptor(desc)?)?
+        }
         Methods::GetRoots => serde_json::to_string_pretty(&client.get_roots()?)?,
         Methods::GetBlock { hash, verbosity } => {
             let block = client.get_block(hash, verbosity)?;
@@ -250,6 +253,10 @@ pub enum Methods {
     /// Loads a new descriptor to the watch only wallet
     #[command(name = "loaddescriptor")]
     LoadDescriptor { desc: String },
+
+    /// Removes a descriptor from the watch only wallet
+    #[command(name = "removedescriptor")]
+    RemoveDescriptor { desc: String },
 
     /// Returns the roots of the current utreexo forest
     #[command(name = "getroots")]
