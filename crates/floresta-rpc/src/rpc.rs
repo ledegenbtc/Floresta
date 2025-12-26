@@ -65,6 +65,13 @@ pub trait FlorestaRPC {
     /// Returns true if the descriptor was found and removed, false otherwise.
     fn remove_descriptor(&self, descriptor: String) -> Result<bool>;
 
+    /// Returns information about the watch-only wallet including balance,
+    /// transaction count, UTXO count, and descriptor count.
+    fn get_wallet_info(&self) -> Result<WalletInfo>;
+
+    /// Returns a list of all transactions in the watch-only wallet.
+    fn list_transactions(&self) -> Result<Vec<TransactionInfo>>;
+
     #[doc = include_str!("../../../doc/rpc/rescanblockchain.md")]
     fn rescanblockchain(
         &self,
@@ -317,6 +324,14 @@ impl<T: JsonRPCClient> FlorestaRPC for T {
 
     fn remove_descriptor(&self, descriptor: String) -> Result<bool> {
         self.call("removedescriptor", &[Value::String(descriptor)])
+    }
+
+    fn get_wallet_info(&self) -> Result<WalletInfo> {
+        self.call("getwalletinfo", &[])
+    }
+
+    fn list_transactions(&self) -> Result<Vec<TransactionInfo>> {
+        self.call("listtransactions", &[])
     }
 
     fn get_block_filter(&self, height: u32) -> Result<String> {

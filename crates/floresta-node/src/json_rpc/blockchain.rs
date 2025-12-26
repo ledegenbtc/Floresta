@@ -657,4 +657,67 @@ impl<Blockchain: RpcChain> RpcImpl<Blockchain> {
             .remove_descriptor(&descriptor)
             .map_err(|e| JsonRpcError::Wallet(e.to_string()))
     }
+
+    pub(super) fn get_wallet_info(&self) -> Result<WalletInfo, JsonRpcError> {
+        let stats = self
+            .wallet
+            .get_stats()
+            .map_err(|e| JsonRpcError::Wallet(e.to_string()))?;
+
+        let descriptors = self
+            .wallet
+            .get_descriptors()
+            .map_err(|e| JsonRpcError::Wallet(e.to_string()))?;
+
+        Ok(WalletInfo {
+            balance: stats.balance,
+            tx_count: stats.transaction_count,
+            utxo_count: stats.utxo_count,
+            address_count: stats.address_count,
+            descriptor_count: descriptors.len(),
+            derivation_index: stats.derivation_index,
+        })
+    }
+
+    pub(super) fn list_transactions(&self) -> Result<Vec<TransactionInfo>, JsonRpcError> {
+        let mut transactions = Vec::new();
+
+        // Get all cached addresses and their histories
+        let addresses = self.wallet.get_cached_addresses();
+        for address in addresses {
+            let script_hash = floresta_common::get_spk_hash(&address);
+            if let Some(history) = self.wallet.get_address_history(&script_hash) {
+                for cached_tx in history {
+                    // Avoid duplicates
+                    if !transactions.iter().any(|t: &TransactionInfo| t.txid == cached_tx.hash.to_string()) {
+                        transactions.push(TransactionInfo {
+                            txid: cached_tx.hash.to_string(),
+                            height: cached_tx.height,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Sort by height descending (newest first)
+        transactions.sort_by(|a, b| b.height.cmp(&a.height));
+
+        Ok(transactions)
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WalletInfo {
+    pub balance: u64,
+    pub tx_count: usize,
+    pub utxo_count: usize,
+    pub address_count: usize,
+    pub descriptor_count: usize,
+    pub derivation_index: u32,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TransactionInfo {
+    pub txid: String,
+    pub height: u32,
 }

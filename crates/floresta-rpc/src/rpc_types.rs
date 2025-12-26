@@ -423,3 +423,29 @@ impl Display for AddNodeCommand {
 }
 
 impl std::error::Error for Error {}
+
+/// Information about the watch-only wallet
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletInfo {
+    /// Total confirmed balance in satoshis
+    pub balance: u64,
+    /// Number of transactions in the wallet
+    pub tx_count: usize,
+    /// Number of unspent transaction outputs
+    pub utxo_count: usize,
+    /// Number of addresses being monitored
+    pub address_count: usize,
+    /// Number of descriptors loaded
+    pub descriptor_count: usize,
+    /// Current derivation index
+    pub derivation_index: u32,
+}
+
+/// Information about a transaction in the wallet
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionInfo {
+    /// Transaction ID
+    pub txid: String,
+    /// Block height where this transaction was confirmed (0 if unconfirmed)
+    pub height: u32,
+}

@@ -466,6 +466,14 @@ async fn handle_json_rpc_request(
                 .map(|v| serde_json::to_value(v).unwrap())
         }
 
+        "getwalletinfo" => state
+            .get_wallet_info()
+            .map(|v| serde_json::to_value(v).unwrap()),
+
+        "listtransactions" => state
+            .list_transactions()
+            .map(|v| serde_json::to_value(v).unwrap()),
+
         _ => {
             let error = JsonRpcError::MethodNotFound;
             Err(error)

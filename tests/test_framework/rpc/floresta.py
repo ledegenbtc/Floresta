@@ -177,3 +177,60 @@ class FlorestaRPC(BaseRPC):
             A dictionary containing the outpoint information.
         """
         return self.perform_request("gettxout", params=[txid, vout, include_mempool])
+
+    def load_descriptor(self, descriptor: str) -> bool:
+        """
+        Load a descriptor into the watch-only wallet performing
+        `perform_request('loaddescriptor', params=[str])`
+
+        Args:
+            descriptor: The output descriptor to load.
+
+        Returns:
+            True if the descriptor was loaded successfully.
+        """
+        return self.perform_request("loaddescriptor", params=[descriptor])
+
+    def list_descriptors(self) -> list:
+        """
+        List all descriptors in the watch-only wallet performing
+        `perform_request('listdescriptors')`
+
+        Returns:
+            A list of descriptor strings.
+        """
+        return self.perform_request("listdescriptors")
+
+    def remove_descriptor(self, descriptor: str) -> bool:
+        """
+        Remove a descriptor from the watch-only wallet performing
+        `perform_request('removedescriptor', params=[str])`
+
+        Args:
+            descriptor: The output descriptor to remove.
+
+        Returns:
+            True if the descriptor was found and removed, False otherwise.
+        """
+        return self.perform_request("removedescriptor", params=[descriptor])
+
+    def get_wallet_info(self) -> dict:
+        """
+        Get information about the watch-only wallet performing
+        `perform_request('getwalletinfo')`
+
+        Returns:
+            A dictionary with balance, tx_count, utxo_count, address_count,
+            descriptor_count, and derivation_index.
+        """
+        return self.perform_request("getwalletinfo")
+
+    def list_wallet_transactions(self) -> list:
+        """
+        List all transactions in the watch-only wallet performing
+        `perform_request('listtransactions')`
+
+        Returns:
+            A list of transaction objects with txid and height.
+        """
+        return self.perform_request("listtransactions")

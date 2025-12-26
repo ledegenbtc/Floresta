@@ -93,6 +93,8 @@ fn do_request(cmd: &Cli, client: Client) -> anyhow::Result<String> {
         Methods::RemoveDescriptor { desc } => {
             serde_json::to_string_pretty(&client.remove_descriptor(desc)?)?
         }
+        Methods::GetWalletInfo => serde_json::to_string_pretty(&client.get_wallet_info()?)?,
+        Methods::ListTransactions => serde_json::to_string_pretty(&client.list_transactions()?)?,
         Methods::GetRoots => serde_json::to_string_pretty(&client.get_roots()?)?,
         Methods::GetBlock { hash, verbosity } => {
             let block = client.get_block(hash, verbosity)?;
@@ -257,6 +259,14 @@ pub enum Methods {
     /// Removes a descriptor from the watch only wallet
     #[command(name = "removedescriptor")]
     RemoveDescriptor { desc: String },
+
+    /// Returns information about the watch only wallet
+    #[command(name = "getwalletinfo")]
+    GetWalletInfo,
+
+    /// Returns a list of all transactions in the watch only wallet
+    #[command(name = "listtransactions")]
+    ListTransactions,
 
     /// Returns the roots of the current utreexo forest
     #[command(name = "getroots")]

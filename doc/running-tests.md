@@ -92,6 +92,10 @@ just test-functional-run "-t floresta-cli -k stop -k ping"
 
 # run many tests that start with the word `getblock` (getblockhash, getblockheader, etc...)
 just test-functional-run "-t floresta-cli -k getblock"
+
+# run descriptor and wallet management tests
+# (loaddescriptor, listdescriptors, removedescriptor, getwalletinfo, listtransactions)
+just test-functional-run "-t floresta-cli -k descriptors"
 ```
 
 #### From helper scripts
@@ -154,6 +158,10 @@ Furthermore, you can run a set of specific tests, rather than all at once.
 
 # run many tests that start with the word `getblock` (getblockhash, getblockheader, etc...)
 ./tests/run.sh -t floresta-cli -k getblock
+
+# run descriptor and wallet management tests
+# (loaddescriptor, listdescriptors, removedescriptor, getwalletinfo, listtransactions)
+./tests/run.sh -t floresta-cli -k descriptors
 ```
 
 #### From python utility directly
