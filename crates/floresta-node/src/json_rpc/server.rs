@@ -470,9 +470,27 @@ async fn handle_json_rpc_request(
             .get_wallet_info()
             .map(|v| serde_json::to_value(v).unwrap()),
 
-        "listtransactions" => state
-            .list_transactions()
+        "listtransactions" => {
+            let count: Option<usize> = get_optional_field(&params, 1, "count", get_numeric)?
+                .map(|n: u32| n as usize);
+            let skip: Option<usize> = get_optional_field(&params, 2, "skip", get_numeric)?
+                .map(|n: u32| n as usize);
+            state
+                .list_transactions(count, skip)
+                .map(|v| serde_json::to_value(v).unwrap())
+        }
+
+        "listaddresses" => state
+            .list_addresses()
             .map(|v| serde_json::to_value(v).unwrap()),
+
+        "listunspent" => {
+            let minconf: Option<u32> = get_optional_field(&params, 0, "minconf", get_numeric)?;
+            let maxconf: Option<u32> = get_optional_field(&params, 1, "maxconf", get_numeric)?;
+            state
+                .list_unspent(minconf, maxconf)
+                .map(|v| serde_json::to_value(v).unwrap())
+        }
 
         _ => {
             let error = JsonRpcError::MethodNotFound;

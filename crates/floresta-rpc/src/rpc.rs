@@ -69,8 +69,29 @@ pub trait FlorestaRPC {
     /// transaction count, UTXO count, and descriptor count.
     fn get_wallet_info(&self) -> Result<WalletInfo>;
 
-    /// Returns a list of all transactions in the watch-only wallet.
-    fn list_transactions(&self) -> Result<Vec<TransactionInfo>>;
+    /// Returns a list of transactions in the watch-only wallet.
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - The number of transactions to return (default: 10)
+    /// * `skip` - The number of transactions to skip (default: 0)
+    fn list_transactions(&self, count: Option<usize>, skip: Option<usize>)
+        -> Result<Vec<TransactionInfo>>;
+
+    /// Returns a list of all addresses derived from loaded descriptors.
+    fn list_addresses(&self) -> Result<Vec<AddressInfo>>;
+
+    /// Returns a list of unspent transaction outputs in the wallet.
+    ///
+    /// # Arguments
+    ///
+    /// * `minconf` - Minimum number of confirmations (default: 1)
+    /// * `maxconf` - Maximum number of confirmations (default: 9999999)
+    fn list_unspent(
+        &self,
+        minconf: Option<u32>,
+        maxconf: Option<u32>,
+    ) -> Result<Vec<UnspentOutput>>;
 
     #[doc = include_str!("../../../doc/rpc/rescanblockchain.md")]
     fn rescanblockchain(
@@ -330,8 +351,38 @@ impl<T: JsonRPCClient> FlorestaRPC for T {
         self.call("getwalletinfo", &[])
     }
 
-    fn list_transactions(&self) -> Result<Vec<TransactionInfo>> {
-        self.call("listtransactions", &[])
+    fn list_transactions(
+        &self,
+        count: Option<usize>,
+        skip: Option<usize>,
+    ) -> Result<Vec<TransactionInfo>> {
+        let mut params = vec![Value::String("*".to_string())]; // dummy parameter
+        if let Some(c) = count {
+            params.push(Value::Number(Number::from(c)));
+            if let Some(s) = skip {
+                params.push(Value::Number(Number::from(s)));
+            }
+        }
+        self.call("listtransactions", &params)
+    }
+
+    fn list_addresses(&self) -> Result<Vec<AddressInfo>> {
+        self.call("listaddresses", &[])
+    }
+
+    fn list_unspent(
+        &self,
+        minconf: Option<u32>,
+        maxconf: Option<u32>,
+    ) -> Result<Vec<UnspentOutput>> {
+        let mut params = Vec::new();
+        if let Some(min) = minconf {
+            params.push(Value::Number(Number::from(min)));
+            if let Some(max) = maxconf {
+                params.push(Value::Number(Number::from(max)));
+            }
+        }
+        self.call("listunspent", &params)
     }
 
     fn get_block_filter(&self, height: u32) -> Result<String> {

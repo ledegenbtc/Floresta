@@ -94,7 +94,13 @@ fn do_request(cmd: &Cli, client: Client) -> anyhow::Result<String> {
             serde_json::to_string_pretty(&client.remove_descriptor(desc)?)?
         }
         Methods::GetWalletInfo => serde_json::to_string_pretty(&client.get_wallet_info()?)?,
-        Methods::ListTransactions => serde_json::to_string_pretty(&client.list_transactions()?)?,
+        Methods::ListTransactions { count, skip } => {
+            serde_json::to_string_pretty(&client.list_transactions(count, skip)?)?
+        }
+        Methods::ListAddresses => serde_json::to_string_pretty(&client.list_addresses()?)?,
+        Methods::ListUnspent { minconf, maxconf } => {
+            serde_json::to_string_pretty(&client.list_unspent(minconf, maxconf)?)?
+        }
         Methods::GetRoots => serde_json::to_string_pretty(&client.get_roots()?)?,
         Methods::GetBlock { hash, verbosity } => {
             let block = client.get_block(hash, verbosity)?;
@@ -264,9 +270,31 @@ pub enum Methods {
     #[command(name = "getwalletinfo")]
     GetWalletInfo,
 
-    /// Returns a list of all transactions in the watch only wallet
+    /// Returns a list of transactions in the watch only wallet
     #[command(name = "listtransactions")]
-    ListTransactions,
+    ListTransactions {
+        /// Number of transactions to return (default: 10)
+        #[arg(default_value = "10")]
+        count: Option<usize>,
+        /// Number of transactions to skip (default: 0)
+        #[arg(default_value = "0")]
+        skip: Option<usize>,
+    },
+
+    /// Returns a list of all addresses derived from loaded descriptors
+    #[command(name = "listaddresses")]
+    ListAddresses,
+
+    /// Returns a list of unspent transaction outputs (UTXOs)
+    #[command(name = "listunspent")]
+    ListUnspent {
+        /// Minimum number of confirmations (default: 1)
+        #[arg(default_value = "1")]
+        minconf: Option<u32>,
+        /// Maximum number of confirmations (default: 9999999)
+        #[arg(default_value = "9999999")]
+        maxconf: Option<u32>,
+    },
 
     /// Returns the roots of the current utreexo forest
     #[command(name = "getroots")]

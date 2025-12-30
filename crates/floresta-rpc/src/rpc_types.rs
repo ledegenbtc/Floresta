@@ -427,10 +427,19 @@ impl std::error::Error for Error {}
 /// Information about the watch-only wallet
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletInfo {
-    /// Total confirmed balance in satoshis
-    pub balance: u64,
-    /// Number of transactions in the wallet
-    pub tx_count: usize,
+    /// The wallet name (always "default" for Floresta)
+    pub walletname: String,
+    /// The total confirmed balance in BTC
+    pub balance: f64,
+    /// The total unconfirmed balance in BTC
+    pub unconfirmed_balance: f64,
+    /// The total number of transactions in the wallet
+    pub txcount: usize,
+    /// Whether private keys are enabled (always false for watch-only)
+    pub private_keys_enabled: bool,
+    /// Whether the wallet uses descriptors
+    pub descriptors: bool,
+    // Floresta-specific fields
     /// Number of unspent transaction outputs
     pub utxo_count: usize,
     /// Number of addresses being monitored
@@ -444,8 +453,63 @@ pub struct WalletInfo {
 /// Information about a transaction in the wallet
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionInfo {
-    /// Transaction ID
+    /// The transaction id
     pub txid: String,
-    /// Block height where this transaction was confirmed (0 if unconfirmed)
-    pub height: u32,
+    /// The transaction category (send, receive)
+    pub category: String,
+    /// The amount in BTC (negative for send)
+    pub amount: f64,
+    /// The number of confirmations (0 for unconfirmed, -1 for conflicted)
+    pub confirmations: i32,
+    /// The block hash containing the transaction (if confirmed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blockhash: Option<String>,
+    /// The block height containing the transaction (if confirmed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blockheight: Option<u32>,
+    /// The block time (if confirmed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocktime: Option<u32>,
+    /// The transaction time
+    pub time: u32,
+    /// The time received by the wallet
+    pub timereceived: u32,
+}
+
+/// Information about an address in the watch-only wallet
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddressInfo {
+    /// Script hash (Electrum format - reversed SHA256 of scriptPubKey)
+    pub script_hash: String,
+    /// Bitcoin address string (if the script is a standard address type)
+    pub address: Option<String>,
+    /// Current balance in satoshis
+    pub balance: u64,
+    /// Number of transactions involving this address
+    pub tx_count: usize,
+}
+
+/// Information about an unspent transaction output (UTXO)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnspentOutput {
+    /// The transaction id
+    pub txid: String,
+    /// The output index
+    pub vout: u32,
+    /// The bitcoin address
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    /// The scriptPubKey hex
+    #[serde(rename = "scriptPubKey")]
+    pub script_pub_key: String,
+    /// The output value in BTC
+    pub amount: f64,
+    /// The number of confirmations
+    pub confirmations: i32,
+    /// Whether we have the keys to spend this output (always false for watch-only)
+    pub spendable: bool,
+    /// Whether we know how to spend this output
+    pub solvable: bool,
+    /// Whether this output is safe to spend
+    pub safe: bool,
 }

@@ -669,9 +669,16 @@ impl<Blockchain: RpcChain> RpcImpl<Blockchain> {
             .get_descriptors()
             .map_err(|e| JsonRpcError::Wallet(e.to_string()))?;
 
+        // Convert satoshis to BTC
+        let balance_btc = stats.balance as f64 / 100_000_000.0;
+
         Ok(WalletInfo {
-            balance: stats.balance,
-            tx_count: stats.transaction_count,
+            walletname: "default".to_string(),
+            balance: balance_btc,
+            unconfirmed_balance: 0.0, // Floresta doesn't track unconfirmed separately yet
+            txcount: stats.transaction_count,
+            private_keys_enabled: false, // Always false for watch-only
+            descriptors: true,           // Floresta uses descriptors
             utxo_count: stats.utxo_count,
             address_count: stats.address_count,
             descriptor_count: descriptors.len(),
@@ -679,45 +686,289 @@ impl<Blockchain: RpcChain> RpcImpl<Blockchain> {
         })
     }
 
-    pub(super) fn list_transactions(&self) -> Result<Vec<TransactionInfo>, JsonRpcError> {
+    pub(super) fn list_transactions(
+        &self,
+        count: Option<usize>,
+        skip: Option<usize>,
+    ) -> Result<Vec<TransactionInfo>, JsonRpcError> {
         let mut transactions = Vec::new();
+
+        // Get current tip height for confirmations calculation
+        let tip_height = self.chain.get_height().unwrap_or(0);
 
         // Get all cached addresses and their histories
         let addresses = self.wallet.get_cached_addresses();
+        let mut seen_txids = std::collections::HashSet::new();
+
         for address in addresses {
             let script_hash = floresta_common::get_spk_hash(&address);
             if let Some(history) = self.wallet.get_address_history(&script_hash) {
                 for cached_tx in history {
                     // Avoid duplicates
-                    if !transactions.iter().any(|t: &TransactionInfo| t.txid == cached_tx.hash.to_string()) {
-                        transactions.push(TransactionInfo {
-                            txid: cached_tx.hash.to_string(),
-                            height: cached_tx.height,
-                        });
+                    if !seen_txids.insert(cached_tx.hash) {
+                        continue;
                     }
+
+                    // Calculate confirmations
+                    let confirmations = if cached_tx.height > 0 {
+                        (tip_height.saturating_sub(cached_tx.height) + 1) as i32
+                    } else {
+                        0 // Unconfirmed
+                    };
+
+                    // Get block hash and time if confirmed
+                    let (blockhash, blocktime) = if cached_tx.height > 0 {
+                        let hash = self.chain.get_block_hash(cached_tx.height).ok();
+                        let time = hash
+                            .and_then(|h| self.chain.get_block_header(&h).ok())
+                            .map(|header| header.time);
+                        (hash.map(|h| h.to_string()), time)
+                    } else {
+                        (None, None)
+                    };
+
+                    // Calculate amount (positive for receive, negative for send)
+                    // For watch-only, we primarily track receives
+                    let amount_sats = cached_tx
+                        .tx
+                        .output
+                        .iter()
+                        .filter(|out| {
+                            let spk_hash = floresta_common::get_spk_hash(&out.script_pubkey);
+                            self.wallet.is_address_cached(&spk_hash)
+                        })
+                        .map(|out| out.value.to_sat())
+                        .sum::<u64>();
+
+                    let amount_btc = amount_sats as f64 / 100_000_000.0;
+
+                    // Use block time or current time for unconfirmed
+                    let time = blocktime.unwrap_or_else(|| {
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs() as u32)
+                            .unwrap_or(0)
+                    });
+
+                    transactions.push(TransactionInfo {
+                        txid: cached_tx.hash.to_string(),
+                        category: "receive".to_string(), // Watch-only primarily tracks receives
+                        amount: amount_btc,
+                        confirmations,
+                        blockhash,
+                        blockheight: if cached_tx.height > 0 {
+                            Some(cached_tx.height)
+                        } else {
+                            None
+                        },
+                        blocktime,
+                        time,
+                        timereceived: time,
+                    });
                 }
             }
         }
 
-        // Sort by height descending (newest first)
-        transactions.sort_by(|a, b| b.height.cmp(&a.height));
+        // Sort by confirmations ascending (newest first, then unconfirmed)
+        transactions.sort_by(|a, b| a.confirmations.cmp(&b.confirmations));
 
-        Ok(transactions)
+        // Apply skip and count
+        let skip = skip.unwrap_or(0);
+        let count = count.unwrap_or(10);
+
+        let result: Vec<TransactionInfo> = transactions
+            .into_iter()
+            .skip(skip)
+            .take(count)
+            .collect();
+
+        Ok(result)
+    }
+
+    pub(super) fn list_addresses(&self) -> Result<Vec<AddressInfo>, JsonRpcError> {
+        let mut addresses = Vec::new();
+
+        let cached_addresses = self.wallet.get_cached_addresses();
+        for script in cached_addresses {
+            let script_hash = floresta_common::get_spk_hash(&script);
+            let balance = self.wallet.get_address_balance(&script_hash).unwrap_or(0);
+            let tx_count = self
+                .wallet
+                .get_address_history(&script_hash)
+                .map(|h| h.len())
+                .unwrap_or(0);
+
+            // Try to convert script to address string
+            let address = bitcoin::Address::from_script(&script, self.chain.get_params())
+                .map(|a| a.to_string())
+                .ok();
+
+            addresses.push(AddressInfo {
+                script_hash: script_hash.to_string(),
+                address,
+                balance,
+                tx_count,
+            });
+        }
+
+        // Sort by balance descending
+        addresses.sort_by(|a, b| b.balance.cmp(&a.balance));
+
+        Ok(addresses)
+    }
+
+    pub(super) fn list_unspent(
+        &self,
+        minconf: Option<u32>,
+        maxconf: Option<u32>,
+    ) -> Result<Vec<UnspentOutput>, JsonRpcError> {
+        let mut utxos = Vec::new();
+
+        let minconf = minconf.unwrap_or(1);
+        let maxconf = maxconf.unwrap_or(9999999);
+
+        // Get current tip height for confirmations calculation
+        let tip_height = self.chain.get_height().unwrap_or(0);
+
+        // Iterate over all cached addresses and collect their UTXOs
+        let cached_addresses = self.wallet.get_cached_addresses();
+        for script in cached_addresses {
+            let script_hash = floresta_common::get_spk_hash(&script);
+
+            if let Some(address_utxos) = self.wallet.get_address_utxos(&script_hash) {
+                for (txout, outpoint) in address_utxos {
+                    // Get the height of the transaction
+                    let height = self.wallet.get_height(&outpoint.txid).unwrap_or(0);
+
+                    // Calculate confirmations
+                    let confirmations = if height > 0 {
+                        (tip_height.saturating_sub(height) + 1) as i32
+                    } else {
+                        0
+                    };
+
+                    // Filter by confirmation count
+                    if (confirmations as u32) < minconf || (confirmations as u32) > maxconf {
+                        continue;
+                    }
+
+                    // Convert script to address
+                    let address =
+                        bitcoin::Address::from_script(&script, self.chain.get_params())
+                            .map(|a| a.to_string())
+                            .ok();
+
+                    // Amount in BTC
+                    let amount = txout.value.to_sat() as f64 / 100_000_000.0;
+
+                    utxos.push(UnspentOutput {
+                        txid: outpoint.txid.to_string(),
+                        vout: outpoint.vout,
+                        address,
+                        script_pub_key: txout.script_pubkey.to_hex_string(),
+                        amount,
+                        confirmations,
+                        spendable: false, // Watch-only wallet
+                        solvable: true,   // We know the scriptPubKey
+                        safe: confirmations >= 1, // Confirmed = safe
+                    });
+                }
+            }
+        }
+
+        // Sort by amount descending
+        utxos.sort_by(|a, b| b.amount.partial_cmp(&a.amount).unwrap());
+
+        Ok(utxos)
     }
 }
 
+/// Information about the watch-only wallet
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WalletInfo {
-    pub balance: u64,
-    pub tx_count: usize,
+    /// The wallet name (always "default" for Floresta)
+    pub walletname: String,
+    /// The total confirmed balance in BTC
+    pub balance: f64,
+    /// The total unconfirmed balance in BTC
+    pub unconfirmed_balance: f64,
+    /// The total number of transactions in the wallet
+    pub txcount: usize,
+    /// Whether private keys are enabled (always false for watch-only)
+    pub private_keys_enabled: bool,
+    /// Whether the wallet uses descriptors
+    pub descriptors: bool,
+    // Floresta-specific fields
+    /// Number of unspent transaction outputs
     pub utxo_count: usize,
+    /// Number of addresses being monitored
     pub address_count: usize,
+    /// Number of descriptors loaded
     pub descriptor_count: usize,
+    /// Current derivation index
     pub derivation_index: u32,
 }
 
+/// Information about a transaction in the wallet
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TransactionInfo {
+    /// The transaction id
     pub txid: String,
-    pub height: u32,
+    /// The transaction category (send, receive)
+    pub category: String,
+    /// The amount in BTC (negative for send)
+    pub amount: f64,
+    /// The number of confirmations (0 for unconfirmed, -1 for conflicted)
+    pub confirmations: i32,
+    /// The block hash containing the transaction (if confirmed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blockhash: Option<String>,
+    /// The block height containing the transaction (if confirmed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blockheight: Option<u32>,
+    /// The block time (if confirmed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocktime: Option<u32>,
+    /// The transaction time
+    pub time: u32,
+    /// The time received by the wallet
+    pub timereceived: u32,
+}
+
+/// Information about an address in the watch-only wallet
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AddressInfo {
+    /// Script hash (Electrum format - reversed SHA256 of scriptPubKey)
+    pub script_hash: String,
+    /// Bitcoin address string (if the script is a standard address type)
+    pub address: Option<String>,
+    /// Current balance in satoshis
+    pub balance: u64,
+    /// Number of transactions involving this address
+    pub tx_count: usize,
+}
+
+/// Information about an unspent transaction output (UTXO)
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UnspentOutput {
+    /// The transaction id
+    pub txid: String,
+    /// The output index
+    pub vout: u32,
+    /// The bitcoin address
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    /// The scriptPubKey hex
+    #[serde(rename = "scriptPubKey")]
+    pub script_pub_key: String,
+    /// The output value in BTC
+    pub amount: f64,
+    /// The number of confirmations
+    pub confirmations: i32,
+    /// Whether we have the keys to spend this output (always false for watch-only)
+    pub spendable: bool,
+    /// Whether we know how to spend this output
+    pub solvable: bool,
+    /// Whether this output is safe to spend
+    pub safe: bool,
 }

@@ -26,8 +26,12 @@ None.
 
 ```json
 {
-  "balance": 999890,
-  "tx_count": 2,
+  "walletname": "default",
+  "balance": 0.00999890,
+  "unconfirmed_balance": 0.0,
+  "txcount": 2,
+  "private_keys_enabled": false,
+  "descriptors": true,
   "utxo_count": 1,
   "address_count": 100,
   "descriptor_count": 1,
@@ -35,12 +39,16 @@ None.
 }
 ```
 
-- `balance` - (u64) Total confirmed balance in satoshis across all descriptors
-- `tx_count` - (usize) Number of transactions in the wallet
-- `utxo_count` - (usize) Number of unspent transaction outputs
-- `address_count` - (usize) Number of addresses being monitored
-- `descriptor_count` - (usize) Number of descriptors loaded
-- `derivation_index` - (u32) Current derivation index
+- `walletname` - (string) The wallet name (always "default" for Floresta)
+- `balance` - (numeric) Total confirmed balance in BTC
+- `unconfirmed_balance` - (numeric) Total unconfirmed balance in BTC
+- `txcount` - (numeric) Number of transactions in the wallet
+- `private_keys_enabled` - (boolean) Whether private keys are enabled (always false for watch-only)
+- `descriptors` - (boolean) Whether the wallet uses descriptors (always true)
+- `utxo_count` - (numeric) Number of unspent transaction outputs
+- `address_count` - (numeric) Number of addresses being monitored
+- `descriptor_count` - (numeric) Number of descriptors loaded
+- `derivation_index` - (numeric) Current derivation index
 
 ### Error
 
@@ -49,6 +57,7 @@ None.
 ## Notes
 
 - This command aggregates data from all loaded descriptors
-- Balance includes all confirmed transactions only
+- Balance is returned in BTC (not satoshis)
+- `unconfirmed_balance` is currently always 0 (not yet tracked separately)
 - Use `listtransactions` to see individual transactions
 - Related commands: `loaddescriptor`, `listdescriptors`, `listtransactions`

@@ -415,30 +415,21 @@ O Floresta é watch-only, então:
 
 ---
 
-## 9. API Proposta
+## 9. API
 
 ### 9.1 Rust API
 
 ```rust
-// Exportar
-pub fn export_backup(
-    wallet: &AddressCache,
-    password: &str,
-    options: ExportOptions,
-) -> Result<Vec<u8>, BackupError>;
+use floresta_backup::{export_wallet_backup, restore_wallet_backup, NetworkType};
 
-// Importar
-pub fn import_backup(
-    data: &[u8],
-    password: &str,
-) -> Result<WalletPayload, BackupError>;
+// Exportar wallet para backup criptografado
+let backup = export_wallet_backup(&wallet, NetworkType::Mainnet, "password")?;
+std::fs::write("wallet.backup", &backup)?;
 
-// Opções de exportação
-pub struct ExportOptions {
-    pub include_transactions: bool,
-    pub include_utxos: bool,
-    pub include_addresses: bool,
-}
+// Restaurar wallet de backup
+let backup = std::fs::read("wallet.backup")?;
+let result = restore_wallet_backup(&wallet, &backup, "password")?;
+println!("Restored {} descriptors", result.descriptors_imported);
 ```
 
 ### 9.2 RPC API
@@ -481,13 +472,13 @@ floresta-cli importwalletbackup --password "senha" --input backup.bewp
 crates/floresta-backup/
 ├── Cargo.toml
 ├── src/
-│   ├── lib.rs           # Re-exports públicos
-│   ├── types.rs         # Structs do payload (FEITO)
-│   ├── cbor.rs          # Serialização/deserialização
+│   ├── lib.rs           # API de alto nível e re-exports
+│   ├── types.rs         # Structs do payload (WalletPayload, Account, etc.)
+│   ├── cbor.rs          # Serialização/deserialização CBOR
 │   ├── crypto.rs        # Argon2id + AES-GCM
 │   ├── envelope.rs      # Wrapper criptografado
 │   ├── extractor.rs     # Extrai dados da wallet
-│   ├── importer.rs      # Restaura wallet
+│   ├── importer.rs      # Restaura wallet de backup
 │   ├── validation.rs    # Validações do BIP
 │   └── error.rs         # Tipos de erro
 ├── tests/
@@ -495,7 +486,7 @@ crates/floresta-backup/
 │   ├── roundtrip.rs     # Testes serialize/deserialize
 │   └── integration.rs   # Testes end-to-end
 └── docs/
-    └── TECHNICAL_REQUIREMENTS.md  # Este documento
+    └── TECHNICAL_REQUIREMENTS.md
 ```
 
 ---
@@ -528,13 +519,21 @@ bitcoin = "0.32"      # Tipos Bitcoin
 
 ---
 
-## 13. Próximos Passos
+## 13. Status da Implementação
 
-1. ✅ **Dia 1**: Análise do BIP e estrutura de dados
-2. **Dia 2**: Análise do código Floresta (floresta-watch-only)
-3. **Dia 3**: Setup e dependências (PARCIALMENTE FEITO)
-4. **Dia 4**: Finalizar structs e testes unitários
-5. **Dia 5+**: Implementar serialização CBOR
+**Módulos implementados:**
+- `types.rs` - Estruturas de dados do payload
+- `cbor.rs` - Serialização/deserialização CBOR
+- `crypto.rs` - Argon2id + AES-GCM
+- `envelope.rs` - Envelope criptografado
+- `extractor.rs` - Extração de dados da wallet
+- `importer.rs` - Importação para wallet
+- `validation.rs` - Validações do BIP
+
+**Pendente:**
+- RPCs `exportwalletbackup` e `importwalletbackup`
+- Comandos CLI correspondentes
+- Testes de compatibilidade com outras implementações
 
 ---
 

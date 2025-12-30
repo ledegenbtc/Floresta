@@ -233,130 +233,37 @@
 
 ### 5.1 Extração (Export)
 
+A extração utiliza a API do `WalletExtractor` em `extractor.rs`:
+
 ```rust
-// extractor.rs
-pub fn extract_from_wallet<D: AddressCacheDatabase>(
-    cache: &AddressCache<D>,
-    network: NetworkType,
-) -> Result<WalletPayload, BackupError> {
-
-    // 1. Extrair descriptors
-    let descriptors = cache.get_descriptors()?;
-
-    // 2. Criar accounts (cada descriptor = 1 account simples)
-    let accounts = descriptors
-        .iter()
-        .map(|desc| Account {
-            index: None,
-            descriptors: vec![Descriptor {
-                descriptor: desc.clone(),
-                checksum: None,  // TODO: calcular
-                addresses: None,
-                metadata: None,
-            }],
-            metadata: None,
-        })
-        .collect();
-
-    // 3. Extrair transações com metadata
-    let txids = cache.database.list_transactions()?;
-    let transactions = txids
-        .iter()
-        .filter_map(|txid| {
-            let cached = cache.get_transaction(txid)?;
-            Some(Transaction {
-                txid: txid.to_byte_array(),
-                raw_tx: Some(serialize(&cached.tx)),
-                metadata: Some(TransactionMetadata {
-                    block_height: Some(cached.height),
-                    position_in_block: Some(cached.position),
-                    merkle_proof: cached.merkle_block.map(|m| serialize(&m)),
-                    ..Default::default()
-                }),
-            })
-        })
-        .collect();
-
-    // 4. Stats
-    let stats = cache.get_stats()?;
-
-    Ok(WalletPayload {
-        version: 1,
-        network,
-        genesis_hash: None,
-        root: None,  // watch-only, sem chaves privadas
-        accounts,
-        transactions: Some(transactions),
-        utxos: None,  // TODO: extrair UTXOs
-        metadata: Some(WalletMetadata {
-            base: BaseMetadata {
-                birth_height: Some(stats.cache_height),
-                software: Some("Floresta".to_string()),
-                ..Default::default()
-            },
-            ..Default::default()
-        }),
-    })
-}
+// Uso da API de exportação
+let extractor = WalletExtractor::new(NetworkType::Mainnet);
+let payload = extractor.extract_from_wallet(&address_cache)?;
 ```
+
+**Fluxo interno:**
+1. Extrai descriptors via `cache.get_descriptors()`
+2. Cria accounts (cada descriptor = 1 account)
+3. Extrai transações com block_height e merkle_proof
+4. Coleta stats para metadata (birth_height, software)
 
 ### 5.2 Importação (Restore)
 
+A importação utiliza a API do `WalletImporter` em `importer.rs`:
+
 ```rust
-// importer.rs
-pub fn restore_to_wallet<D: AddressCacheDatabase>(
-    payload: WalletPayload,
-    cache: &AddressCache<D>,
-) -> Result<(), BackupError> {
-
-    // 1. Registrar descriptors
-    for account in payload.accounts {
-        for desc in account.descriptors {
-            cache.push_descriptor(&desc.descriptor)?;
-        }
-    }
-
-    // 2. Derivar endereços
-    cache.derive_addresses()?;
-
-    // 3. Restaurar transações (sem rescan!)
-    if let Some(transactions) = payload.transactions {
-        for tx in transactions {
-            if let (Some(raw_tx), Some(metadata)) = (tx.raw_tx, tx.metadata) {
-                let bitcoin_tx: bitcoin::Transaction = deserialize(&raw_tx)?;
-                let height = metadata.block_height.unwrap_or(0);
-                let position = metadata.position_in_block.unwrap_or(0);
-
-                let merkle_proof = metadata.merkle_proof
-                    .map(|p| deserialize(&p))
-                    .transpose()?
-                    .unwrap_or_default();
-
-                // Cachear com altura conhecida = SEM RESCAN
-                cache.cache_transaction(
-                    &bitcoin_tx,
-                    height,
-                    0,  // value calculado internamente
-                    merkle_proof,
-                    position,
-                    0,  // index
-                    false,
-                    get_spk_hash(&bitcoin_tx.output[0].script_pubkey),
-                );
-            }
-        }
-    }
-
-    // 4. Definir altura do cache
-    if let Some(metadata) = payload.metadata {
-        if let Some(height) = metadata.base.birth_height {
-            cache.bump_height(height);
-        }
-    }
-
-    Ok(())
-}
+// Uso da API de importação
+let importer = WalletImporter::new(payload);
+let result = importer.import_to_wallet(&address_cache)?;
+println!("Imported {} descriptors, {} transactions",
+         result.descriptors_imported, result.transactions_imported);
 ```
+
+**Fluxo interno:**
+1. Registra descriptors via `cache.push_descriptor()`
+2. Deriva endereços via `cache.derive_addresses()`
+3. Restaura transações com altura conhecida (SEM RESCAN)
+4. Define altura do cache via `cache.bump_height()`
 
 ## 6. Métodos Necessários em AddressCache
 
@@ -386,17 +293,17 @@ floresta-backup
     └── aes-gcm (Encryption)
 ```
 
-## 8. Arquivos a Criar
+## 8. Estrutura de Arquivos
 
 ```
 floresta-backup/src/
-├── lib.rs           ✅ Criado
-├── types.rs         ✅ Criado
-├── cbor.rs          ⏳ Pendente (Dia 5)
-├── crypto.rs        ⏳ Pendente (Dia 9-10)
-├── envelope.rs      ⏳ Pendente (Dia 11)
-├── extractor.rs     ⏳ Pendente (Dia 12-13)
-├── importer.rs      ⏳ Pendente (Dia 14-15)
-├── validation.rs    ⏳ Pendente (Dia 7-8)
-└── error.rs         ⏳ Pendente (Dia 3)
+├── lib.rs           # Módulo principal, re-exports e API de alto nível
+├── types.rs         # Structs do payload (WalletPayload, Account, etc.)
+├── cbor.rs          # Serialização/deserialização CBOR
+├── crypto.rs        # Argon2id + AES-GCM
+├── envelope.rs      # Wrapper criptografado
+├── extractor.rs     # Extrai dados da wallet
+├── importer.rs      # Restaura wallet de backup
+├── validation.rs    # Validações do BIP
+└── error.rs         # Tipos de erro
 ```
